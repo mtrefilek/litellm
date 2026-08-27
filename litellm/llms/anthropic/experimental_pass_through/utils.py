@@ -23,6 +23,16 @@ def is_reasoning_auto_summary_enabled() -> bool:
     return litellm.reasoning_auto_summary or os.getenv("LITELLM_REASONING_AUTO_SUMMARY", "false").lower() == "true"
 
 
+def _entry_declares_effort(model_info: ModelInfo, effort: str) -> bool:
+    """An entry naming its exact levels answers this gate too, so the level the model map advertises
+    is the level this path forwards. Entries on the per-level flags are unaffected:
+    declared_reasoning_efforts returns None for them and the degradation chain below still runs."""
+    from litellm.router_utils.reasoning_effort_capability import declared_reasoning_efforts
+
+    declared: Final = declared_reasoning_efforts(model_info)
+    return declared is not None and effort in declared
+
+
 def normalize_reasoning_effort_value(
     effort: str,
     model: str,
@@ -47,6 +57,9 @@ def normalize_reasoning_effort_value(
         model_info = get_model_info(model=model, custom_llm_provider=custom_llm_provider)
     except Exception:
         model_info = None
+
+    if model_info is not None and _entry_declares_effort(model_info, effort):
+        return effort
 
     if effort == "max":
         if model_info and model_info.get("supports_max_reasoning_effort"):
